@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="RescueLink — Off-Grid Rider Safety">
+
+  <script>
+    // Force unregister any stale service workers
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+          registration.unregister();
+          console.log('[RescueLink] Unregistered stale service worker');
+        }
+      });
+    }
+  </script>
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="rescue_link">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>RescueLink</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!-- RescueLink Web Serial Hardware Bridge -->
+  <script>
+    let activePort = null;
+    let activeReader = null;
+
+    window.rescueLinkConnectSerial = async function() {
+      if (!navigator.serial) {
+        alert("Web Serial is not supported in this browser. Please open RescueLink in Google Chrome or Microsoft Edge.");
+        return;
+      }
+      try {
+        activePort = await navigator.serial.requestPort();
+        await activePort.open({ baudRate: 115200 });
+
+        window.dispatchEvent(new CustomEvent('hardware_serial_status', { detail: true }));
+
+        const textDecoder = new TextDecoderStream();
+        activePort.readable.pipeTo(textDecoder.writable);
+        activeReader = textDecoder.readable.getReader();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await activeReader.read();
+          if (done) break;
+          buffer += value;
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+              console.log('[RescueLink Serial Rx]:', trimmed);
+              window.dispatchEvent(new CustomEvent('hardware_serial_data', { detail: trimmed }));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Serial port error or closed:', err);
+        window.dispatchEvent(new CustomEvent('hardware_serial_status', { detail: false }));
+      }
+    };
+
+    
+    // ==========================================
+    // Meshtastic Web Bluetooth (BLE) GATT Bridge
+    // ==========================================
+    let bleDevice = null;
+    let bleServer = null;
+    let bleToRadioChar = null;
+    let bleFromRadioChar = null;
+
+    const MESHTASTIC_SVC = '6ba1b218-15a8-461f-9fa8-5dcae273eafd';
+    const TO_RADIO_CHR   = 'f75c76d2-129e-11ed-861d-0242ac120002';
+    const FROM_RADIO_CHR = '2c55e69e-4993-11ed-b878-0242ac120002';
+    const FROM_NUM_CHR   = 'ed9da18c-a800-4f66-a670-aa7547e34453';
+
+    function reportBle(msg) {
+      console.log(msg);
+      try {
+        fetch('/api/log', { method: 'POST', body: msg });
+      } catch(e) {}
+    }
+
+    window.rescueLinkConnectBle = async function() {
+      if (!navigator.bluetooth) {
+        alert('Web Bluetooth is disabled or not supported in this browser.\n\nIMPORTANT: If using Brave Browser, Brave blocks Bluetooth by default. Please open http://localhost:8080 in Google Chrome or Microsoft Edge!');
+        return;
+      }
+      try {
+        reportBle('[BLE] Requesting device (all visible devices)...');
+        bleDevice = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [
+            MESHTASTIC_SVC,
+            '0000180f-0000-1000-8000-00805f9b34fb'
+          ]
+        });
+
+        reportBle('[BLE] Selected device: ' + bleDevice.name);
+
+        bleDevice.addEventListener('gattserverdisconnected', () => {
+          reportBle('[BLE] Event: gattserverdisconnected');
+          window.dispatchEvent(new CustomEvent('meshtastic_ble_status', { detail: false }));
+        });
+
+        reportBle('[BLE] Connecting to GATT server on ' + bleDevice.name + '...');
+        bleServer = await bleDevice.gatt.connect();
+        reportBle('[BLE] GATT connected: ' + bleServer.connected + '. Requesting primary service: ' + MESHTASTIC_SVC);
+        const service = await bleServer.getPrimaryService(MESHTASTIC_SVC);
+        reportBle('[BLE] Found service! Getting characteristics...');
+        
+        let chars = await service.getCharacteristics();
+        reportBle('[BLE] Discovered ' + chars.length + ' characteristics: ' + chars.map(c => c.uuid).join(', '));
+
+        // If Windows has not completed pairing yet, retry getting characteristics for up to 8 seconds
+        let retries = 0;
+        while (chars.length === 0 && retries < 8) {
+          reportBle('[BLE] Waiting for Windows pairing authentication... (' + (retries + 1) + '/8)');
+          await new Promise(r => setTimeout(r, 1000));
+          chars = await service.getCharacteristics();
+          if (chars.length > 0) {
+            reportBle('[BLE] Authentication complete! Discovered: ' + chars.map(c => c.uuid).join(', '));
+            break;
+          }
+          retries++;
+        }
+
+        // Log detailed properties of all discovered characteristics
+        chars.forEach(c => {
+          reportBle('[BLE Char] ' + c.uuid + ' (R:' + c.properties.read + ', W:' + c.properties.write + ', W_NR:' + c.properties.writeWithoutResponse + ', N:' + c.properties.notify + ', I:' + c.properties.indicate + ')');
+        });
+
+        // Correct Meshtastic GATT mapping:
+        // 1. ToRadio: f75c76d2... (Write)
+        // 2. FromRadio: 2c55e69e... (Read)
+        // 3. FromNum: ed9da18c... (Notify flag for FromRadio)
+        bleToRadioChar = chars.find(c => c.uuid.toLowerCase().includes('f75c76d2')) ||
+                         chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+
+        bleFromRadioChar = chars.find(c => c.uuid.toLowerCase().includes('2c55e69e')) ||
+                           chars.find(c => c.properties.read);
+
+        const bleFromNumChar = chars.find(c => c.uuid.toLowerCase().includes('ed9da18c') && c.properties.notify);
+
+        if (!bleToRadioChar) throw new Error('ToRadio write characteristic not found');
+        if (!bleFromRadioChar) throw new Error('FromRadio read characteristic not found');
+
+        reportBle('[BLE] Assigned ToRadio: ' + bleToRadioChar.uuid + ', FromRadio: ' + bleFromRadioChar.uuid);
+
+        // Helper to safely read and dispatch from FromRadio
+        async function readFromRadioPacket() {
+          try {
+            if (bleFromRadioChar && bleDevice && bleDevice.gatt.connected) {
+              const val = await bleFromRadioChar.readValue();
+              if (val && val.byteLength > 0) {
+                const bytes = new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+                window.dispatchEvent(new CustomEvent('meshtastic_ble_packet', { detail: btoa(binary) }));
+              }
+            }
+          } catch (readErr) {
+            reportBle('[BLE] readFromRadio error: ' + readErr.message);
+          }
+        }
+
+        // Subscribe to FromNum notifications (standard Meshtastic BLE notification handle)
+        if (bleFromNumChar) {
+          try {
+            await bleFromNumChar.startNotifications();
+            reportBle('[BLE] FromNum startNotifications succeeded!');
+            bleFromNumChar.addEventListener('characteristicvaluechanged', async () => {
+              await readFromRadioPacket();
+            });
+          } catch (numErr) {
+            reportBle('[BLE] FromNum startNotifications note: ' + numErr);
+          }
+        }
+
+        // Active GATT telemetry pipeline established
+        reportBle('[BLE] Active GATT telemetry pipeline established');
+
+        window.dispatchEvent(new CustomEvent('meshtastic_ble_status', { 
+          detail: { connected: true, deviceName: bleDevice.name || 'Meshtastic Node' }
+        }));
+        reportBle('[BLE] >>> READY & CONNECTED TO LORA MESH <<<');
+      } catch (err) {
+        reportBle('[BLE] Handshake note: ' + err.name + ': ' + err.message);
+        window.dispatchEvent(new CustomEvent('meshtastic_ble_status', { detail: false }));
+      }
+    };
+
+    window.rescueLinkSendToRadio = async function(base64Data) {
+      if (!bleToRadioChar) {
+        reportBle('[BLE] Cannot send: ToRadio characteristic not ready');
+        return false;
+      }
+      try {
+        const binary = atob(base64Data);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+
+        // On Windows Web Bluetooth, an eager write to ToRadio before OS bonding causes
+        // Windows GATT to abort the entire connection. Bypass instant want_config_id (0x18, 0x01)
+        // to preserve the active telemetry/FromRadio notification pipeline.
+        if (bytes.length === 2 && bytes[0] === 0x18 && bytes[1] === 0x01) {
+          reportBle('[BLE] Telemetry stream active. Bypassing initial unbonded handshake write.');
+          return true;
+        }
+
+        // Use appropriate write method based on characteristic properties
+        if (bleToRadioChar.properties.writeWithoutResponse && bleToRadioChar.writeValueWithoutResponse) {
+          await bleToRadioChar.writeValueWithoutResponse(bytes);
+        } else if (bleToRadioChar.writeValueWithResponse) {
+          await bleToRadioChar.writeValueWithResponse(bytes);
+        } else {
+          await bleToRadioChar.writeValue(bytes);
+        }
+        reportBle('[BLE] Successfully sent packet to radio (' + bytes.length + ' bytes)');
+        return true;
+      } catch (err) {
+        reportBle('[BLE] Send note: ' + err.message + ' (PIN: 123456 if Windows prompts)');
+        return false;
+      }
+    };
+
+    window.rescueLinkDisconnectBle = async function() {
+      if (bleDevice && bleDevice.gatt.connected) {
+        bleDevice.gatt.disconnect();
+      }
+      bleDevice = null;
+      bleServer = null;
+      bleToRadioChar = null;
+      bleFromRadioChar = null;
+      window.dispatchEvent(new CustomEvent('meshtastic_ble_status', { detail: false }));
+    };
+
+    window.rescueLinkDisconnectSerial = async function() {
+      try {
+        if (activeReader) await activeReader.cancel();
+        if (activePort) await activePort.close();
+      } catch (e) {
+        console.warn(e);
+      }
+      activePort = null;
+      activeReader = null;
+      window.dispatchEvent(new CustomEvent('hardware_serial_status', { detail: false }));
+    };
+  </script>
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

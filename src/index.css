@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  
+  body {
+    background-color: #090D16;
+    color: #F1F5F9;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Custom Tactical Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090D16;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1F2937;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* Tactical Map Tile Filter for Dark Cartography */
+.leaflet-container {
+  background: #06090F !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+.tactical-dark-tiles {
+  filter: invert(100%) hue-rotate(190deg) brightness(0.85) contrast(1.15) saturate(0.4);
+}
+
+.tactical-topo-tiles {
+  filter: brightness(0.7) invert(0.9) contrast(1.8) hue-rotate(190deg) saturate(0.4);
+}
+
+/* Leaflet Custom Marker & Popup Overrides */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: #111827 !important;
+  color: #F3F4F6 !important;
+  border: 1px solid #1F2937 !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.8) !important;
+  border-radius: 8px !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px !important;
+  line-height: 1.4 !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  color: #9CA3AF !important;
+  padding: 6px 8px !important;
+}
+
+.leaflet-container a.leaflet-popup-close-button:hover {
+  color: #EF4444 !important;
+}
+
+/* Pulse Glows */
+.tactical-glow-cyan {
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+}
+
+.tactical-glow-emerald {
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.tactical-glow-crimson {
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+}

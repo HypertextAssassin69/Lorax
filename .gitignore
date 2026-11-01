@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build artifacts
+dist/
+dist-ssr/
+
+# PlatformIO build artifacts & compiled binaries
+.pio/
+*/.pio/
+firmware/.pio/
+firmware/.git_backup/
+*.bin
+*.elf
+*.hex
+
+# Temp & logs
+*.log
+lorax_temp/
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.local
