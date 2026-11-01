@@ -1,5 +1,7 @@
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 import { Mesh, Portnums, Telemetry } from '@meshtastic/protobufs';
+import { BleClient } from '@capacitor-community/bluetooth-le';
+import { Capacitor } from '@capacitor/core';
 import { useMeshStore } from '../store/useMeshStore';
 import {
   MeshChatMessage,
@@ -29,6 +31,7 @@ const MAX_SERIAL_PACKET_LEN = 512;
 class MeshtasticTransportService {
   // BLE Handles
   private bleDevice: BluetoothDevice | null = null;
+  private nativeBleDeviceId: string | null = null;
   private toRadioChar: BluetoothRemoteGATTCharacteristic | null = null;
   private fromRadioChar: BluetoothRemoteGATTCharacteristic | null = null;
   private fromNumChar: BluetoothRemoteGATTCharacteristic | null = null;
@@ -53,6 +56,44 @@ class MeshtasticTransportService {
   public async connectBle(): Promise<boolean> {
     const store = useMeshStore.getState();
 
+    // 1a. Native Android / iOS via Capacitor
+    if (Capacitor.isNativePlatform()) {
+      try {
+        store.setConnectionState('CONNECTING', 'BLE');
+        await this.disconnect();
+        await BleClient.initialize();
+        const device = await BleClient.requestDevice({
+          services: [MESHTASTIC_BLE_SERVICE_UUID],
+          optionalServices: [MESHTASTIC_BLE_SERVICE_UUID],
+        });
+        this.nativeBleDeviceId = device.deviceId;
+        await BleClient.connect(this.nativeBleDeviceId, () => this.handleBleDisconnect());
+
+        // Subscribe to notifications on FromNum
+        await BleClient.startNotifications(
+          this.nativeBleDeviceId,
+          MESHTASTIC_BLE_SERVICE_UUID,
+          FROM_NUM_UUID,
+          () => {
+            this.drainFromRadio();
+          }
+        );
+
+        store.setConnectionState('CONFIGURING', 'BLE');
+        this.currentConfigId = Math.floor(Math.random() * 0x7fffffff) + 1;
+        await this.sendWantConfigId(this.currentConfigId);
+        await this.drainFromRadio();
+        this.startKeepalive();
+        return true;
+      } catch (err: any) {
+        console.error('[Meshtastic Native BLE] Connection error:', err);
+        store.setConnectionState('ERROR', 'BLE', err?.message || 'Bluetooth connection failed');
+        await this.disconnect();
+        return false;
+      }
+    }
+
+    // 1b. Web Bluetooth (Browser / HTTPS)
     // Check Secure Context (required by Web Bluetooth on mobile browsers)
     if (typeof window !== 'undefined' && !window.isSecureContext) {
       const httpsUrl = window.location.href.replace('http:', 'https:');
@@ -139,7 +180,37 @@ class MeshtasticTransportService {
   }
 
   private async drainFromRadio(): Promise<void> {
-    if (this.isDrainingBle || !this.fromRadioChar) {
+    if (this.isDrainingBle) {
+      return;
+    }
+
+    // Native Capacitor BLE
+    if (Capacitor.isNativePlatform() && this.nativeBleDeviceId) {
+      this.isDrainingBle = true;
+      try {
+        while (this.nativeBleDeviceId) {
+          const dataView = await BleClient.read(
+            this.nativeBleDeviceId,
+            MESHTASTIC_BLE_SERVICE_UUID,
+            FROM_RADIO_UUID
+          );
+          if (!dataView || dataView.byteLength === 0) {
+            break;
+          }
+          const rawBytes = new Uint8Array(
+            dataView.buffer.slice(dataView.byteOffset, dataView.byteOffset + dataView.byteLength)
+          );
+          this.processIncomingProtobuf(rawBytes);
+        }
+      } catch (e) {
+        // queue clear or end of pending packets
+      } finally {
+        this.isDrainingBle = false;
+      }
+      return;
+    }
+
+    if (!this.fromRadioChar) {
       return;
     }
 
@@ -894,22 +965,44 @@ class MeshtasticTransportService {
     const store = useMeshStore.getState();
 
     // BLE Path
-    if (store.transportType === 'BLE' && this.toRadioChar) {
-      try {
-        const bufferSource = protobufBytes.buffer.slice(
-          protobufBytes.byteOffset,
-          protobufBytes.byteOffset + protobufBytes.byteLength
-        ) as ArrayBuffer;
-
-        if (this.toRadioChar.properties.writeWithoutResponse) {
-          await this.toRadioChar.writeValueWithoutResponse(bufferSource);
-        } else {
-          await this.toRadioChar.writeValue(bufferSource);
+    if (store.transportType === 'BLE') {
+      if (Capacitor.isNativePlatform() && this.nativeBleDeviceId) {
+        try {
+          const dv = new DataView(
+            protobufBytes.buffer,
+            protobufBytes.byteOffset,
+            protobufBytes.byteLength
+          );
+          await BleClient.write(
+            this.nativeBleDeviceId,
+            MESHTASTIC_BLE_SERVICE_UUID,
+            TO_RADIO_UUID_PRIMARY,
+            dv
+          );
+          return true;
+        } catch (err) {
+          console.error('[Meshtastic Native BLE] writeToRadio failed:', err);
+          return false;
         }
-        return true;
-      } catch (err) {
-        console.error('[Meshtastic BLE] writeToRadio failed:', err);
-        return false;
+      }
+
+      if (this.toRadioChar) {
+        try {
+          const bufferSource = protobufBytes.buffer.slice(
+            protobufBytes.byteOffset,
+            protobufBytes.byteOffset + protobufBytes.byteLength
+          ) as ArrayBuffer;
+
+          if (this.toRadioChar.properties.writeWithoutResponse) {
+            await this.toRadioChar.writeValueWithoutResponse(bufferSource);
+          } else {
+            await this.toRadioChar.writeValue(bufferSource);
+          }
+          return true;
+        } catch (err) {
+          console.error('[Meshtastic BLE] writeToRadio failed:', err);
+          return false;
+        }
       }
     }
 
@@ -1403,6 +1496,13 @@ class MeshtasticTransportService {
     this.stopPhoneGpsAutoSync();
 
     // Disconnect BLE
+    if (this.nativeBleDeviceId) {
+      try {
+        await BleClient.disconnect(this.nativeBleDeviceId);
+      } catch (e) {}
+      this.nativeBleDeviceId = null;
+    }
+
     if (this.bleDevice?.gatt?.connected) {
       try {
         if (this.fromNumChar) {

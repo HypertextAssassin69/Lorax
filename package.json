@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.2.3",
+    "@capacitor-community/bluetooth-le": "^7.3.2",
+    "@capacitor/android": "^7.6.10",
     "@capacitor/core": "^7.0.1",
     "@meshtastic/protobufs": "^2.8.0",
     "leaflet": "^1.9.4",
