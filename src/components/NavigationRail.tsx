@@ -6,11 +6,17 @@ import {
   Cpu,
 } from 'lucide-react';
 import { useMeshStore } from '../store/useMeshStore';
+import { alertAudioService } from '../services/alertAudioService';
 
 export const NavigationRail: React.FC = () => {
   const activeTab = useMeshStore((s) => s.activeTab);
   const setActiveTab = useMeshStore((s) => s.setActiveTab);
   const distressAlerts = useMeshStore((s) => s.distressAlerts);
+
+  const handleTabChange = (tab: 'map' | 'sos' | 'comms' | 'nodes') => {
+    alertAudioService.playClick();
+    setActiveTab(tab);
+  };
 
   const activeAlerts = distressAlerts.filter((a) => !a.acknowledged).length;
 
@@ -18,7 +24,7 @@ export const NavigationRail: React.FC = () => {
     <nav className="h-16 w-full backdrop-blur-xl bg-slate-950/85 border-t border-white/10 flex items-center justify-around px-2 select-none z-40 shrink-0 pb-[env(safe-area-inset-bottom,0px)] font-sans">
       {/* Tab 1: Live Tactical Map */}
       <button
-        onClick={() => setActiveTab('map')}
+        onClick={() => handleTabChange('map')}
         className={`flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition-all active:scale-95 cursor-pointer ${
           activeTab === 'map'
             ? 'text-cyan-400 font-semibold'
@@ -33,7 +39,7 @@ export const NavigationRail: React.FC = () => {
 
       {/* Tab 2: SOS & SAR Beacon */}
       <button
-        onClick={() => setActiveTab('sos')}
+        onClick={() => handleTabChange('sos')}
         className={`relative flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition-all active:scale-95 cursor-pointer ${
           activeTab === 'sos'
             ? 'text-rose-400 font-semibold'
@@ -56,7 +62,7 @@ export const NavigationRail: React.FC = () => {
 
       {/* Tab 3: Mesh Chat & Channels */}
       <button
-        onClick={() => setActiveTab('comms')}
+        onClick={() => handleTabChange('comms')}
         className={`flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition-all active:scale-95 cursor-pointer ${
           activeTab === 'comms'
             ? 'text-cyan-400 font-semibold'
@@ -71,7 +77,7 @@ export const NavigationRail: React.FC = () => {
 
       {/* Tab 4: Nodes & Diagnostics */}
       <button
-        onClick={() => setActiveTab('nodes')}
+        onClick={() => handleTabChange('nodes')}
         className={`flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition-all active:scale-95 cursor-pointer ${
           activeTab === 'nodes'
             ? 'text-cyan-400 font-semibold'

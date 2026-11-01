@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useMeshStore } from '../../store/useMeshStore';
 import { meshtasticTransport } from '../../services/meshtasticTransport';
+import { alertAudioService } from '../../services/alertAudioService';
 import { DistressAlert } from '../../types/meshtastic';
 
 export const EmergencySosConsole: React.FC = () => {
@@ -67,9 +68,7 @@ export const EmergencySosConsole: React.FC = () => {
 
   const executeSos = async () => {
     setSosStatus('TRANSMITTING');
-    if ('vibrate' in navigator) {
-      try { navigator.vibrate([200, 100, 200]); } catch (e) {}
-    }
+    alertAudioService.playSosAlarm();
 
     try {
       const pktId = await meshtasticTransport.triggerEmergencySos(
@@ -86,6 +85,7 @@ export const EmergencySosConsole: React.FC = () => {
   };
 
   const handleTriggerSiren = async () => {
+    alertAudioService.playSosAlarm();
     await meshtasticTransport.triggerAcousticBeacon();
   };
 

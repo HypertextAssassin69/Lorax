@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useMeshStore } from '../../store/useMeshStore';
 import { meshtasticTransport } from '../../services/meshtasticTransport';
+import { alertAudioService } from '../../services/alertAudioService';
 
 const CANNED_PRESETS = [
   'SAR Team En Route',
@@ -34,6 +35,7 @@ export const MeshCommsInspector: React.FC = () => {
     if (e) e.preventDefault();
     if (!messageText.trim() || isSending) return;
 
+    alertAudioService.playClick();
     setIsSending(true);
     await meshtasticTransport.sendTextMessage(messageText.trim(), targetDestination, wantAck);
     setMessageText('');
@@ -41,6 +43,7 @@ export const MeshCommsInspector: React.FC = () => {
   };
 
   const handleSendCanned = async (text: string) => {
+    alertAudioService.playClick();
     setIsSending(true);
     await meshtasticTransport.sendTextMessage(text, targetDestination, wantAck);
     setIsSending(false);

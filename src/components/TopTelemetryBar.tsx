@@ -5,16 +5,29 @@ import {
   Usb,
   Unplug,
   Loader2,
+  Volume2,
+  VolumeX,
+  Download,
+  FileSpreadsheet,
+  MapPin,
   CheckCircle2,
 } from 'lucide-react';
 import { useMeshStore } from '../store/useMeshStore';
 import { meshtasticTransport } from '../services/meshtasticTransport';
+import { exportMissionGpx, exportMissionGeoJson, exportCommsCsv } from '../utils/missionExport';
 
 export const TopTelemetryBar: React.FC = () => {
   const connectionState = useMeshStore((s) => s.connectionState);
   const transportType = useMeshStore((s) => s.transportType);
   const localNode = useMeshStore((s) => s.localNode);
+  const nodes = useMeshStore((s) => s.nodes);
+  const messages = useMeshStore((s) => s.messages);
+  const distressAlerts = useMeshStore((s) => s.distressAlerts);
+  const isAudioMuted = useMeshStore((s) => s.isAudioMuted);
+  const toggleAudioMute = useMeshStore((s) => s.toggleAudioMute);
+
   const [isLinking, setIsLinking] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const isConnected = connectionState === 'CONNECTED';
   const isConnecting = connectionState === 'CONNECTING' || connectionState === 'CONFIGURING';
@@ -33,6 +46,21 @@ export const TopTelemetryBar: React.FC = () => {
 
   const handleDisconnect = async () => {
     await meshtasticTransport.disconnect();
+  };
+
+  const handleExportGpx = () => {
+    exportMissionGpx(nodes, distressAlerts);
+    setShowExportMenu(false);
+  };
+
+  const handleExportGeoJson = () => {
+    exportMissionGeoJson(nodes, distressAlerts);
+    setShowExportMenu(false);
+  };
+
+  const handleExportCsv = () => {
+    exportCommsCsv(messages, nodes);
+    setShowExportMenu(false);
   };
 
   // Subtitle format: `!hexId • 88% • -62 dBm` or `Offline • Tap to pair`
@@ -69,8 +97,70 @@ export const TopTelemetryBar: React.FC = () => {
         </div>
       </div>
 
-      {/* Right side: Sleek pill buttons */}
-      <div className="flex items-center space-x-2 shrink-0">
+      {/* Right side: Sleek action & link buttons */}
+      <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+        {/* Audio Mute/Unmute button */}
+        <button
+          onClick={toggleAudioMute}
+          className={`p-2 rounded-full border transition-all cursor-pointer ${
+            isAudioMuted
+              ? 'bg-slate-900 border-white/10 text-slate-500 hover:text-slate-300'
+              : 'bg-cyan-500/10 border-cyan-400/30 text-cyan-400 hover:bg-cyan-500/20'
+          }`}
+          title={isAudioMuted ? 'Audio Alerts Muted (Tap to unmute)' : 'Tactical Audio Active (Tap to mute)'}
+        >
+          {isAudioMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+        </button>
+
+        {/* Mission Export Menu Trigger */}
+        <div className="relative">
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            className="p-2 rounded-full bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-300 hover:text-white transition-all cursor-pointer"
+            title="Export Mission Coordinates (GPX / GeoJSON / CSV)"
+          >
+            <Download className="w-3.5 h-3.5 text-cyan-400" />
+          </button>
+
+          {showExportMenu && (
+            <div className="absolute right-0 top-11 w-56 rounded-2xl bg-slate-950/95 border border-white/15 p-2 shadow-2xl backdrop-blur-2xl z-50 text-xs space-y-1">
+              <div className="px-2.5 py-1 text-[10px] font-mono font-semibold text-slate-400 border-b border-white/5 uppercase">
+                Export Mission Telemetry
+              </div>
+              <button
+                onClick={handleExportGpx}
+                className="w-full px-2.5 py-2 rounded-xl hover:bg-cyan-500/15 text-left text-slate-200 hover:text-cyan-300 flex items-center space-x-2 transition-colors cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                <div>
+                  <div className="font-semibold">Garmin GPX (.gpx)</div>
+                  <div className="text-[10px] text-slate-500">Waypoints for GPS & OsmAnd</div>
+                </div>
+              </button>
+              <button
+                onClick={handleExportGeoJson}
+                className="w-full px-2.5 py-2 rounded-xl hover:bg-cyan-500/15 text-left text-slate-200 hover:text-cyan-300 flex items-center space-x-2 transition-colors cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                <div>
+                  <div className="font-semibold">GIS GeoJSON (.geojson)</div>
+                  <div className="text-[10px] text-slate-500">For QGIS, Google Earth & Web</div>
+                </div>
+              </button>
+              <button
+                onClick={handleExportCsv}
+                className="w-full px-2.5 py-2 rounded-xl hover:bg-cyan-500/15 text-left text-slate-200 hover:text-cyan-300 flex items-center space-x-2 transition-colors cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
+                <div>
+                  <div className="font-semibold">Comms Log (.csv)</div>
+                  <div className="text-[10px] text-slate-500">Radio packet and text history</div>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
+
         {isConnected ? (
           <button
             onClick={handleDisconnect}

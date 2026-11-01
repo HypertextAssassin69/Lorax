@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { alertAudioService } from '../services/alertAudioService';
 import {
   ConnectionState,
   TransportType,
@@ -33,8 +34,10 @@ interface MeshStoreState {
   selectedNodeNum: number | null;
   activeTab: 'map' | 'sos' | 'comms' | 'nodes';
   unreadDistressCount: number;
+  isAudioMuted: boolean;
 
   // Actions
+  toggleAudioMute: () => void;
   setConnectionState: (state: ConnectionState, transport?: TransportType, error?: string | null) => void;
   setLocalNodeInfo: (update: Partial<LocalNodeInfo>) => void;
   upsertNode: (update: Partial<MeshNode> & { num: number }) => void;
@@ -67,8 +70,18 @@ export const useMeshStore = create<MeshStoreState>((set, get) => ({
   selectedNodeNum: null,
   activeTab: 'map',
   unreadDistressCount: 0,
+  isAudioMuted: alertAudioService.getMuted(),
+
+  toggleAudioMute: () => {
+    const nextMuted = alertAudioService.toggleMuted();
+    set({ isAudioMuted: nextMuted });
+  },
 
   setConnectionState: (state, transport, error = null) => {
+    const prev = get();
+    if (state === 'CONNECTED' && prev.connectionState !== 'CONNECTED') {
+      alertAudioService.playConnectChime();
+    }
     set((prev) => ({
       connectionState: state,
       transportType: transport !== undefined ? transport : prev.transportType,
@@ -156,6 +169,10 @@ export const useMeshStore = create<MeshStoreState>((set, get) => ({
   },
 
   addChatMessage: (msg) => {
+    const localNum = get().localNode?.myNodeNum;
+    if (msg.from !== localNum) {
+      alertAudioService.playMessageChime();
+    }
     set((prev) => ({
       messages: [msg, ...prev.messages.slice(0, 199)], // keep last 200 messages
     }));
@@ -176,6 +193,7 @@ export const useMeshStore = create<MeshStoreState>((set, get) => ({
   },
 
   addDistressAlert: (alert) => {
+    alertAudioService.playSosAlarm();
     set((prev) => {
       // Avoid duplicate alert by id
       const exists = prev.distressAlerts.some((a) => a.id === alert.id);
