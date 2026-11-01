@@ -1,6 +1,13 @@
 # Lorax 🌲📡
 > **A low-cost, off-grid tactical search & rescue tracking system used to track down people in places with zero cellular network or GPS infrastructure.**
 
+[![Live Web App](https://img.shields.io/badge/Web%20App-Live%20on%20GitHub%20Pages-00F0FF?style=for-the-badge&logo=github)](https://hypertextassassin69.github.io/Lorax/)
+[![Download Android APK](https://img.shields.io/badge/Download-Android%20APK%20(Latest)-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/HypertextAssassin69/Lorax/releases/download/latest-apk/Lorax-SAR-Tactical-Command.apk)
+
+- 🌐 **Live Web App:** [https://hypertextassassin69.github.io/Lorax/](https://hypertextassassin69.github.io/Lorax/)
+- 📱 **Direct Android APK Download:** [Lorax-SAR-Tactical-Command.apk](https://github.com/HypertextAssassin69/Lorax/releases/download/latest-apk/Lorax-SAR-Tactical-Command.apk)
+- 📦 **GitHub Releases:** [Latest APK Release Page](https://github.com/HypertextAssassin69/Lorax/releases/tag/latest-apk)
+
 Production-grade Search & Rescue (SAR) Tactical Command Application and embedded firmware running on **Seeed Studio XIAO ESP32-C6** (`env:rescue_node_c6`) with **IndieSemiC SX1262 LoRa** transceiver, **MPU6050 6-Axis Crash & Fall Detection**, and **u-blox NEO-6M GPS**.
 
 ---
