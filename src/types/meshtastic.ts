@@ -63,6 +63,7 @@ export interface MeshChatMessage {
   isAlert: boolean;
   ackStatus: 'SENDING' | 'ROUTING' | 'ACKED' | 'FAILED' | 'RECEIVED';
   ackBy?: number;
+  errorReason?: string;
   packetId?: number;
 }
 
@@ -130,5 +131,8 @@ export interface LocalNodeInfo {
   position?: NodePosition;
   snr?: number;
   rssi?: number;
+  loraRegion?: string;
+  isRegionUnset?: boolean;
+  modemPreset?: string;
   hardware: HardwareDiagnostics;
 }

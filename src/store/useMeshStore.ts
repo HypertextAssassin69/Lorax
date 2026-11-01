@@ -42,7 +42,7 @@ interface MeshStoreState {
   setLocalNodeInfo: (update: Partial<LocalNodeInfo>) => void;
   upsertNode: (update: Partial<MeshNode> & { num: number }) => void;
   addChatMessage: (msg: MeshChatMessage) => void;
-  updateMessageAck: (packetId: number, status: 'ACKED' | 'ROUTING' | 'FAILED', ackBy?: number) => void;
+  updateMessageAck: (packetId: number, status: 'ACKED' | 'ROUTING' | 'FAILED', ackBy?: number, errorReason?: string) => void;
   addDistressAlert: (alert: DistressAlert) => void;
   acknowledgeDistress: (id: string) => void;
   addRawPacketLog: (log: RawPacketLog) => void;
@@ -178,7 +178,7 @@ export const useMeshStore = create<MeshStoreState>((set, get) => ({
     }));
   },
 
-  updateMessageAck: (packetId, status, ackBy) => {
+  updateMessageAck: (packetId, status, ackBy, errorReason) => {
     set((prev) => ({
       messages: prev.messages.map((m) =>
         m.packetId === packetId
@@ -186,6 +186,7 @@ export const useMeshStore = create<MeshStoreState>((set, get) => ({
               ...m,
               ackStatus: status,
               ackBy: ackBy ?? m.ackBy,
+              errorReason: errorReason ?? m.errorReason,
             }
           : m
       ),

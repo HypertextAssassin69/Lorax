@@ -1,5 +1,5 @@
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
-import { Mesh, Portnums, Telemetry } from '@meshtastic/protobufs';
+import { Admin, Config, Mesh, Portnums, Telemetry } from '@meshtastic/protobufs';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import { Capacitor } from '@capacitor/core';
 import { useMeshStore } from '../store/useMeshStore';
@@ -572,6 +572,40 @@ class MeshtasticTransportService {
           break;
         }
 
+        case 'config': {
+          const cfg = variant.value;
+          if (cfg.payloadVariant?.case === 'lora') {
+            const lora = cfg.payloadVariant.value;
+            const regionCode = lora.region;
+            const regionName = Config.Config_LoRaConfig_RegionCode[regionCode] || 'UNSET';
+            const presetName = Config.Config_LoRaConfig_ModemPreset[lora.modemPreset] || 'LONG_FAST';
+            const isUnset = regionCode === 0;
+
+            console.log(`[Meshtastic] Hardware LoRa Config - Region: ${regionName} (${regionCode}), Preset: ${presetName}, TxPower: ${lora.txPower}`);
+
+            store.setLocalNodeInfo({
+              loraRegion: regionName,
+              modemPreset: presetName,
+              isRegionUnset: isUnset,
+            });
+
+            store.addRawPacketLog({
+              id: logId,
+              direction: 'RX',
+              timestamp: Date.now(),
+              portnum: 'CONFIG_LORA',
+              portnumId: 0,
+              from: 0,
+              to: 0,
+              packetId: fromRadio.id,
+              payloadLength: bytes.length,
+              payloadHex,
+              summary: `Radio LoRa Config: Region=${regionName} (${isUnset ? 'TX DISABLED' : 'ACTIVE'}), Preset=${presetName}`,
+            });
+          }
+          break;
+        }
+
         case 'configCompleteId': {
           store.setConnectionState('CONNECTED');
           console.log('[Meshtastic] Hardware config sync complete. Config ID:', variant.value);
@@ -941,7 +975,9 @@ class MeshtasticTransportService {
           if (data.requestId) {
             const reqId = data.requestId >>> 0;
             if (routingProto.variant?.case === 'errorReason') {
-              store.updateMessageAck(reqId, 'FAILED', fromNum);
+              const errCode = routingProto.variant.value;
+              const errName = Mesh.Routing_Error[errCode] || `ERR_${errCode}`;
+              store.updateMessageAck(reqId, 'FAILED', fromNum, errName);
             } else {
               store.updateMessageAck(reqId, 'ACKED', fromNum);
             }
@@ -1489,6 +1525,118 @@ class MeshtasticTransportService {
       clearInterval(this.gpsSyncInterval);
       this.gpsSyncInterval = null;
     }
+  }
+
+  /**
+   * Set LoRa Region (e.g. IN = 10, EU_868 = 3) & commit to radio flash
+   */
+  public async setLoRaRegion(regionCode: number = Config.Config_LoRaConfig_RegionCode.IN): Promise<boolean> {
+    const store = useMeshStore.getState();
+    const localNum = store.localNode?.myNodeNum ?? 0;
+    const packetId = Math.floor(Math.random() * 0x7fffffff) + 1;
+
+    try {
+      const loraConfig = create(Config.Config_LoRaConfigSchema, {
+        region: regionCode,
+        usePreset: true,
+        modemPreset: Config.Config_LoRaConfig_ModemPreset.LONG_FAST,
+        txPower: 0,
+      });
+
+      const configMsg = create(Config.ConfigSchema, {
+        payloadVariant: {
+          case: 'lora',
+          value: loraConfig,
+        },
+      });
+
+      const adminMsg = create(Admin.AdminMessageSchema, {
+        payloadVariant: {
+          case: 'setConfig',
+          value: configMsg,
+        },
+      });
+
+      const dataPayload = create(Mesh.DataSchema, {
+        portnum: Portnums.PortNum.ADMIN_APP,
+        payload: toBinary(Admin.AdminMessageSchema, adminMsg),
+        wantResponse: true,
+      });
+
+      const meshPacket = create(Mesh.MeshPacketSchema, {
+        from: localNum,
+        to: localNum,
+        id: packetId,
+        wantAck: true,
+        priority: Mesh.MeshPacket_Priority.RELIABLE,
+        payloadVariant: {
+          case: 'decoded',
+          value: dataPayload,
+        },
+      });
+
+      const toRadio = create(Mesh.ToRadioSchema, {
+        payloadVariant: {
+          case: 'packet',
+          value: meshPacket,
+        },
+      });
+
+      const success = await this.sendToRadioRaw(toBinary(Mesh.ToRadioSchema, toRadio));
+
+      // Commit edit settings to radio flash after short delay
+      setTimeout(async () => {
+        const commitAdmin = create(Admin.AdminMessageSchema, {
+          payloadVariant: {
+            case: 'commitEditSettings',
+            value: true,
+          },
+        });
+
+        const commitData = create(Mesh.DataSchema, {
+          portnum: Portnums.PortNum.ADMIN_APP,
+          payload: toBinary(Admin.AdminMessageSchema, commitAdmin),
+          wantResponse: true,
+        });
+
+        const commitPacket = create(Mesh.MeshPacketSchema, {
+          from: localNum,
+          to: localNum,
+          id: Math.floor(Math.random() * 0x7fffffff) + 1,
+          wantAck: true,
+          priority: Mesh.MeshPacket_Priority.RELIABLE,
+          payloadVariant: {
+            case: 'decoded',
+            value: commitData,
+          },
+        });
+
+        await this.sendToRadioRaw(toBinary(Mesh.ToRadioSchema, create(Mesh.ToRadioSchema, {
+          payloadVariant: { case: 'packet', value: commitPacket },
+        })));
+
+        // Update local state to reflect new region
+        const regionName = Config.Config_LoRaConfig_RegionCode[regionCode] || 'IN';
+        store.setLocalNodeInfo({
+          loraRegion: regionName,
+          isRegionUnset: false,
+        });
+      }, 600);
+
+      return success;
+    } catch (err) {
+      console.error('[Meshtastic] Failed to set LoRa Region:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Broadcast an over-the-air Beacon ping without requiring ACK
+   * to immediately announce presence to any nearby mesh nodes
+   */
+  public async broadcastDiscoveryBeacon(): Promise<boolean> {
+    const res = await this.sendTextMessage('📡 Lorax Tactical Beacon Ping', 0xffffffff, false);
+    return res !== null;
   }
 
   public async disconnect(): Promise<void> {

@@ -13,6 +13,9 @@ import {
   Trash2,
   MapPin,
   Compass,
+  Radio,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { useMeshStore } from '../../store/useMeshStore';
 import { meshtasticTransport } from '../../services/meshtasticTransport';
@@ -34,8 +37,22 @@ export const NodeDirectoryDiagnostics: React.FC = () => {
 
   const [showPacketInspector, setShowPacketInspector] = useState(false);
   const [tracingNodeNum, setTracingNodeNum] = useState<number | null>(null);
+  const [isBeaconing, setIsBeaconing] = useState(false);
+  const [isSettingRegion, setIsSettingRegion] = useState(false);
 
   const nodeList = Object.values(nodes);
+
+  const handleSendBeacon = async () => {
+    setIsBeaconing(true);
+    await meshtasticTransport.broadcastDiscoveryBeacon();
+    setTimeout(() => setIsBeaconing(false), 2000);
+  };
+
+  const handleSetRegion = async (code: number) => {
+    setIsSettingRegion(true);
+    await meshtasticTransport.setLoRaRegion(code);
+    setTimeout(() => setIsSettingRegion(false), 2000);
+  };
 
   const handleTraceroute = async (nodeNum: number) => {
     setTracingNodeNum(nodeNum);
@@ -63,10 +80,67 @@ export const NodeDirectoryDiagnostics: React.FC = () => {
               Mesh Node Directory
             </h2>
           </div>
-          <span className="text-[11px] font-mono text-cyan-400 font-semibold px-2 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-400/30">
-            {nodeList.length} Discovered
-          </span>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleSendBeacon}
+              disabled={isBeaconing}
+              title="Broadcast discovery beacon to wake up nearby nodes"
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/25 text-[11px] font-semibold transition active:scale-95"
+            >
+              <Radio className={`w-3 h-3 ${isBeaconing ? 'animate-spin text-cyan-200' : 'animate-pulse text-cyan-400'}`} />
+              <span>{isBeaconing ? 'Pinging...' : 'Ping Mesh'}</span>
+            </button>
+            <span className="text-[11px] font-mono text-cyan-400 font-semibold px-2 py-0.5 rounded-full bg-cyan-500/15 border border-cyan-400/30">
+              {nodeList.length} Discovered
+            </span>
+          </div>
         </div>
+
+        {/* Region UNSET Warning Card */}
+        {localNode?.isRegionUnset && (
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-400/40 text-xs space-y-2.5">
+            <div className="flex items-start space-x-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 animate-bounce" />
+              <div>
+                <span className="font-bold text-amber-300">LoRa Region is UNSET (TX Locked)</span>
+                <p className="text-[11px] text-amber-200/80 leading-relaxed mt-0.5">
+                  Meshtastic firmware disables RF radio transmission completely until a region is configured. Peer nodes cannot hear each other until both nodes have a region set.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 pt-1">
+              <button
+                onClick={() => handleSetRegion(10)}
+                disabled={isSettingRegion}
+                className="px-3 py-1.5 text-xs font-bold rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition active:scale-95 shadow"
+              >
+                {isSettingRegion ? 'Setting Region...' : 'Set IN_865 (India)'}
+              </button>
+              <button
+                onClick={() => handleSetRegion(3)}
+                disabled={isSettingRegion}
+                className="px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 transition active:scale-95"
+              >
+                Set EU_868
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tactical Discovery Helper if only 1 node */}
+        {nodeList.length <= 1 && (
+          <div className="p-3 rounded-2xl bg-slate-900/40 border border-white/5 text-[11px] text-slate-400 space-y-1.5">
+            <div className="flex items-center space-x-2 text-cyan-400 font-semibold">
+              <Compass className="w-3.5 h-3.5" />
+              <span>Only Local Host Discovered?</span>
+            </div>
+            <ul className="list-disc list-inside space-y-1 text-slate-400 text-[10.5px] leading-relaxed">
+              <li>Both ESP32-C6 nodes must be set to the <strong>same LoRa Region</strong> (e.g. <code className="text-cyan-300">IN_865</code>).</li>
+              <li>Both nodes must be on the default channel (<code className="text-cyan-300">LongFast</code>).</li>
+              <li>Tap <strong>Ping Mesh</strong> above to broadcast an unacknowledged RF beacon so the other node detects it immediately.</li>
+            </ul>
+          </div>
+        )}
 
         {/* Nodes List */}
         <div className="space-y-2.5">

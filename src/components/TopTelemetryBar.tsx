@@ -63,9 +63,11 @@ export const TopTelemetryBar: React.FC = () => {
     setShowExportMenu(false);
   };
 
-  // Subtitle format: `!hexId • 88% • -62 dBm` or `Offline • Tap to pair`
+  // Subtitle format: `!hexId • IN_865 • 88%` or `!hexId • REGION UNSET` or `Offline • Tap to pair`
   const subtitle = isConnected && localNode
-    ? `${localNode.hexId}${localNode.batteryLevel !== undefined ? ` • ${localNode.batteryLevel}%` : ''}${localNode.snr !== undefined ? ` • ${localNode.snr.toFixed(0)} dB` : ''}`
+    ? localNode.isRegionUnset
+      ? `${localNode.hexId} • ⚠️ REGION UNSET (TX OFF)`
+      : `${localNode.hexId}${localNode.loraRegion ? ` • ${localNode.loraRegion}` : ''}${localNode.batteryLevel !== undefined ? ` • ${localNode.batteryLevel}%` : ''}`
     : isConnecting
     ? 'Syncing Protobuf...'
     : 'Offline • Tap to pair';
