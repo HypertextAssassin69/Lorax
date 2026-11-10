@@ -47,6 +47,7 @@ class MeshtasticTransportService {
   // Active state
   private currentConfigId = 0;
   private keepaliveTimer: number | null = null;
+  private drainTimer: number | null = null;
   private gpsSyncInterval: any = null;
 
   // ==========================================
@@ -1479,12 +1480,24 @@ class MeshtasticTransportService {
         await this.sendToRadioRaw(bytes);
       }
     }, 45000);
+
+    // Periodic fallback BLE drain every 3s in case mobile OS drops GATT notifications
+    this.drainTimer = window.setInterval(async () => {
+      const store = useMeshStore.getState();
+      if (store.connectionState === 'CONNECTED' && store.transportType === 'BLE') {
+        await this.drainFromRadio();
+      }
+    }, 3000);
   }
 
   private stopKeepalive(): void {
     if (this.keepaliveTimer) {
       clearInterval(this.keepaliveTimer);
       this.keepaliveTimer = null;
+    }
+    if (this.drainTimer) {
+      clearInterval(this.drainTimer);
+      this.drainTimer = null;
     }
   }
 
