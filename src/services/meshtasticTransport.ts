@@ -63,11 +63,70 @@ class MeshtasticTransportService {
         store.setConnectionState('CONNECTING', 'BLE');
         await this.disconnect();
         await BleClient.initialize();
-        const device = await BleClient.requestDevice({
-          services: [MESHTASTIC_BLE_SERVICE_UUID],
-          optionalServices: [MESHTASTIC_BLE_SERVICE_UUID],
-        });
-        this.nativeBleDeviceId = device.deviceId;
+
+        let targetDeviceId: string | null = null;
+
+        // 1. Check if node is already connected at OS GATT level (e.g. system Bluetooth menu)
+        try {
+          const connected = await BleClient.getConnectedDevices([MESHTASTIC_BLE_SERVICE_UUID]);
+          const meshtasticConn =
+            connected.find(
+              (d: any) =>
+                d.name?.toLowerCase().includes('meshtastic') ||
+                d.name?.toLowerCase().includes('rescue') ||
+                d.name?.toLowerCase().includes('lorax')
+            ) || connected[0];
+
+          if (meshtasticConn) {
+            targetDeviceId = meshtasticConn.deviceId;
+            console.log('[Meshtastic BLE] Found already connected device in Android OS:', meshtasticConn);
+          }
+        } catch (e) {
+          console.warn('[Meshtastic BLE] getConnectedDevices check skipped:', e);
+        }
+
+        // 2. Check if node is already bonded/paired in Android Bluetooth Settings
+        if (!targetDeviceId) {
+          try {
+            const bonded = await BleClient.getBondedDevices();
+            const meshtasticBonded = bonded.find(
+              (d: any) =>
+                d.name?.toLowerCase().includes('meshtastic') ||
+                d.name?.toLowerCase().includes('rescue') ||
+                d.name?.toLowerCase().includes('lorax')
+            );
+            if (meshtasticBonded) {
+              targetDeviceId = meshtasticBonded.deviceId;
+              console.log('[Meshtastic BLE] Found paired/bonded device in Android Settings:', meshtasticBonded);
+            }
+          } catch (e) {
+            console.warn('[Meshtastic BLE] getBondedDevices check skipped:', e);
+          }
+        }
+
+        // 3. If not already paired or connected at OS level, scan for advertising nodes
+        if (!targetDeviceId) {
+          try {
+            // First attempt: Fast scan by Meshtastic name prefix (avoids 128-bit UUID adv truncation issues)
+            const device = await BleClient.requestDevice({
+              namePrefix: 'Meshtastic',
+              optionalServices: [MESHTASTIC_BLE_SERVICE_UUID],
+              scanMode: 2, // SCAN_MODE_LOW_LATENCY
+            });
+            targetDeviceId = device.deviceId;
+          } catch (scanErr) {
+            // Fallback: Scan with direct Service UUID in case device was renamed
+            console.warn('[Meshtastic BLE] Name scan fallback to service UUID:', scanErr);
+            const device = await BleClient.requestDevice({
+              services: [MESHTASTIC_BLE_SERVICE_UUID],
+              optionalServices: [MESHTASTIC_BLE_SERVICE_UUID],
+              scanMode: 2,
+            });
+            targetDeviceId = device.deviceId;
+          }
+        }
+
+        this.nativeBleDeviceId = targetDeviceId;
         await BleClient.connect(this.nativeBleDeviceId, () => this.handleBleDisconnect());
 
         // Subscribe to notifications on FromNum
@@ -113,16 +172,39 @@ class MeshtasticTransportService {
       store.setConnectionState('CONNECTING', 'BLE');
       await this.disconnect();
 
-      // Request device with Meshtastic Service UUID
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { services: [MESHTASTIC_BLE_SERVICE_UUID] },
-          { namePrefix: 'Meshtastic' },
-          { namePrefix: 'Rescue' },
-          { namePrefix: 'SAR' },
-        ],
-        optionalServices: [MESHTASTIC_BLE_SERVICE_UUID],
-      });
+      let device: any = null;
+
+      // Check if node is already paired / permitted in browser cache
+      if ('getDevices' in navigator.bluetooth) {
+        try {
+          const permitted = await (navigator.bluetooth as any).getDevices();
+          const meshtasticDev = permitted.find(
+            (d: any) =>
+              d.name?.toLowerCase().includes('meshtastic') ||
+              d.name?.toLowerCase().includes('rescue') ||
+              d.name?.toLowerCase().includes('lorax')
+          );
+          if (meshtasticDev) {
+            device = meshtasticDev;
+            console.log('[Web Bluetooth] Found previously permitted device in browser cache:', device.name);
+          }
+        } catch (e) {
+          console.warn('[Web Bluetooth] getDevices check skipped:', e);
+        }
+      }
+
+      // If not in cache, prompt picker with multi-filter fallback
+      if (!device) {
+        device = await navigator.bluetooth.requestDevice({
+          filters: [
+            { services: [MESHTASTIC_BLE_SERVICE_UUID] },
+            { namePrefix: 'Meshtastic' },
+            { namePrefix: 'Rescue' },
+            { namePrefix: 'SAR' },
+          ],
+          optionalServices: [MESHTASTIC_BLE_SERVICE_UUID],
+        });
+      }
 
       this.bleDevice = device;
       device.addEventListener('gattserverdisconnected', this.handleBleDisconnect.bind(this));
