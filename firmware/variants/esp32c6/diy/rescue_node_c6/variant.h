@@ -19,8 +19,12 @@ extern "C" {
 #define GPS_BAUDRATE 9600
 
 // Button & Buzzer / Status LED pins
-#define BUTTON_PIN (16)   // XIAO D6 (External Tactile Button to D6 & GND)
-#define LED_PIN (0)       // XIAO D0 (Piezo Buzzer & Status LED)
+#define BUTTON_PIN (16)         // XIAO D6 (External Tactile Button to D6 & GND)
+#define BUTTON_NEED_PULLUP      // Enable internal pull-up on D6 so button doesn't float
+#define PIN_BUZZER (0)          // XIAO D0 (Piezo Buzzer PWM tones on D0 / GPIO 0)
+#define LED_POWER (15)          // XIAO ESP32-C6 On-board User LED (GPIO 15)
+#define LED_NOTIFICATION (15)   // Blink on-board LED on incoming packets
+#define LED_STATE_ON (0)        // Active LOW on Seeed XIAO
 
 // LoRa SX1262 Configuration
 #define USE_SX1262

@@ -614,6 +614,13 @@ class MeshtasticTransportService {
           // Automatically push phone GPS coordinates to the ESP32 node upon connection
           this.startPhoneGpsAutoSync();
 
+          // Automatically announce node presence onto the LoRa mesh to discover neighbors immediately
+          setTimeout(() => {
+            this.broadcastDiscoveryBeacon().catch((err) => {
+              console.warn('[Meshtastic] Auto-discovery beacon failed:', err);
+            });
+          }, 1500);
+
           store.addRawPacketLog({
             id: logId,
             direction: 'RX',
