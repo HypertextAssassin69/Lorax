@@ -2,6 +2,9 @@ param(
     [string]$Port = ""
 )
 
+$env:PYTHONIOENCODING = "utf-8"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 Write-Host "=====================================================" -ForegroundColor Cyan
 Write-Host "      LORAX RESCUE NODE ESP32-C6 1-CLICK FLASHER     " -ForegroundColor Cyan
 Write-Host "=====================================================" -ForegroundColor Cyan
