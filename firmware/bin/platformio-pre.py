@@ -17,3 +17,20 @@ else:
 print(f"PROGNAME: {env.get('PROGNAME')}")
 if platform.name == "espressif32":
     print(f"ESP32_FS_IMAGE_NAME: {env.get('ESP32_FS_IMAGE_NAME')}")
+
+# Auto-patch RadioLib SX126x chip detection for SX1262 silicon returning "SX1262" instead of "SX1261"
+import glob, os
+for radiolib_cpp in glob.glob(os.path.join(env["PROJECT_DIR"], ".pio", "libdeps", "*", "RadioLib", "src", "modules", "SX126x", "SX126x.cpp")):
+    try:
+        with open(radiolib_cpp, "r", encoding="utf-8") as f:
+            content = f.read()
+        target = "if(strncmp(verStr, version, 6) == 0)"
+        replacement = 'if(strncmp(verStr, version, 6) == 0 || strncmp(version, "SX126", 5) == 0)'
+        if target in content and replacement not in content:
+            content = content.replace(target, replacement)
+            with open(radiolib_cpp, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"[RadioLib Patch] Applied SX1262 silicon compatibility patch to {radiolib_cpp}")
+    except Exception as e:
+        print(f"[RadioLib Patch Error] {e}")
+

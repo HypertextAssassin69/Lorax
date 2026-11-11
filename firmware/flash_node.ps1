@@ -16,9 +16,9 @@ if (-not (Test-Path $esptool)) {
 }
 
 # 2. Locate factory binary
-$binFile = (Get-ChildItem -Path "$PSScriptRoot\build_output\firmware-rescue_node_c6-*.factory.bin" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+$binFile = (Get-ChildItem -Path "$PSScriptRoot\build_output\firmware-rescue_node_c6-*.factory.bin" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 if (-not $binFile) {
-    $binFile = (Get-ChildItem -Path "$PSScriptRoot\.pio\build\rescue_node_c6\firmware-rescue_node_c6-*.factory.bin" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+    $binFile = (Get-ChildItem -Path "$PSScriptRoot\.pio\build\rescue_node_c6\firmware-rescue_node_c6-*.factory.bin" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 }
 
 if (-not $binFile -or -not (Test-Path $binFile)) {
