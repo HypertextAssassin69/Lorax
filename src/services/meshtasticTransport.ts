@@ -1211,6 +1211,9 @@ class MeshtasticTransportService {
       from: localNum,
       to: destinationNode,
       id: packetId,
+      channel: 0,
+      hopLimit: 3,
+      hopStart: 3,
       wantAck,
       priority: Mesh.MeshPacket_Priority.DEFAULT,
       payloadVariant: {
@@ -1303,7 +1306,10 @@ class MeshtasticTransportService {
       from: localNum,
       to: 0xffffffff, // Broadcast to all SAR units
       id: packetId,
-      wantAck: true,
+      channel: 0,
+      hopLimit: 3,
+      hopStart: 3,
+      wantAck: false,
       priority: Mesh.MeshPacket_Priority.ALERT,
       payloadVariant: {
         case: 'decoded',
@@ -1394,8 +1400,12 @@ class MeshtasticTransportService {
 
     const meshPacket = create(Mesh.MeshPacketSchema, {
       from: localNum,
-      to: localNum || 0xffffffff,
+      to: 0xffffffff,
       id: packetId,
+      channel: 0,
+      hopLimit: 3,
+      hopStart: 3,
+      wantAck: false,
       priority: Mesh.MeshPacket_Priority.DEFAULT,
       payloadVariant: {
         case: 'decoded',
@@ -1464,6 +1474,9 @@ class MeshtasticTransportService {
       from: localNum,
       to: targetNodeNum,
       id: packetId,
+      channel: 0,
+      hopLimit: 3,
+      hopStart: 3,
       wantAck: true,
       priority: Mesh.MeshPacket_Priority.RELIABLE,
       payloadVariant: {
@@ -1509,10 +1522,11 @@ class MeshtasticTransportService {
     const packetId = Math.floor(Math.random() * 0x7fffffff) + 1;
     const localNum = store.localNode?.myNodeNum ?? 0;
 
-    // Use ALERT_APP payload to trigger beacon
+    // In Meshtastic, ExternalNotificationModule monitors text payloads (ALERT_APP / TEXT_MESSAGE_APP)
+    // and fires the buzzer on GPIO 0 if ASCII_BELL (0x07) is detected.
     const dataPayload = create(Mesh.DataSchema, {
       portnum: Portnums.PortNum.ALERT_APP,
-      payload: new TextEncoder().encode('SIREN_BEACON_ACTIVE:1'),
+      payload: new TextEncoder().encode('\x07[SAR SIREN] TACTICAL ACOUSTIC BEACON ACTIVE\x07'),
       wantResponse: false,
     });
 
@@ -1520,6 +1534,10 @@ class MeshtasticTransportService {
       from: localNum,
       to: targetNode,
       id: packetId,
+      channel: 0,
+      hopLimit: 3,
+      hopStart: 3,
+      wantAck: false,
       priority: Mesh.MeshPacket_Priority.ALERT,
       payloadVariant: {
         case: 'decoded',
