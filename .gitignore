@@ -21,6 +21,7 @@ firmware/.git_backup/
 # Temp & logs
 *.log
 lorax_temp/
+*.zip
 
 # OS and IDE files
 .DS_Store
