@@ -50,9 +50,13 @@ extern "C" {
 #define SX126X_DIO2_AS_RF_SWITCH
 #define SX126X_MAX_POWER 22
 
-// TCXO Configuration
-#define SX126X_DIO3_TCXO_VOLTAGE 1.8
-#define TCXO_OPTIONAL
+// Oscillator Reference Configuration:
+// The IndieSemiC ISC-SX1262-B module utilizes an on-board 32 MHz crystal oscillator (XTAL),
+// NOT an external TCXO driven via DIO3.
+// Do NOT define SX126X_DIO3_TCXO_VOLTAGE so RadioLib properly configures the internal
+// crystal oscillator inverter (0.0V / XTAL reference).
+// #define SX126X_DIO3_TCXO_VOLTAGE 1.8
+// #define TCXO_OPTIONAL
 
 #ifdef __cplusplus
 }

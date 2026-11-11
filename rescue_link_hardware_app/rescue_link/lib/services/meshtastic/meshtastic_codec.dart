@@ -470,6 +470,10 @@ class MeshtasticCodec {
     // Field 9: hop_limit -> (9 << 3) | 0 = 72
     packetBuilder.addByte(72);
     _writeVarint(packetBuilder, 3);
+
+    // Field 15: hop_start -> (15 << 3) | 0 = 120
+    packetBuilder.addByte(120);
+    _writeVarint(packetBuilder, 3);
     final packetBytes = packetBuilder.toBytes();
 
     // 3. ToRadio wrapping packet (Field 2: packet) -> (2 << 3) | 2 = 18
@@ -515,6 +519,10 @@ class MeshtasticCodec {
     // Field 10: want_ack -> (10 << 3) | 0 = 80
     packetBuilder.addByte(80);
     _writeVarint(packetBuilder, 1);
+
+    // Field 15: hop_start -> (15 << 3) | 0 = 120
+    packetBuilder.addByte(120);
+    _writeVarint(packetBuilder, 3);
     final packetBytes = packetBuilder.toBytes();
 
     // 3. ToRadio wrapping packet (Field 2: packet) -> (2 << 3) | 2 = 18
